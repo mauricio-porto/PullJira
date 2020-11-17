@@ -12,14 +12,17 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -74,95 +77,65 @@ public class PullJira {
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		if (args.length < 3) {
-			System.err.println("Estão faltando os argumentos.");
-			System.err.println("Uso: java -jar PullJira.jar <emailId> <password> <inputFile>");
-			System.exit(1);
-		}
-		if (!new File(args[2]).exists()) {
-		    System.err.println("Arquivo de entrada inexistente.");
-		    System.exit(1);
-		}
-
 		PullJira me = new PullJira();
-		me.execute(args[0], args[1], args[2]);
+		if (args.length < 6) {
+			System.out.println("Os parametros são <absgpEmail> <absgpPwd> <jiraUsername> <jiraPwd> <initialDate> <finalDate>");
+			System.exit(0);
+		}
+		me.execute(args[0], args[1], args[2], args[3], args[4], args[5]);
 	}
 
-	private void execute(String emailId, String pwd, String filePath) {
-		driver = new ChromeDriver();
-		driver.get("http://gp.absoluta.net/login");
-		sendKeysByJsScript(EMAIL_SELECTOR, emailId);
-		sendKeysByJsScript(PWD_SELECTOR, pwd);
+	private void execute(String email, String absgpPwd, String jiraUsername, String jiraPwd, String initialDate, String finalDate) {
+		List<JiraData> data = JiraIntegration.consume(jiraUsername, jiraPwd, initialDate, finalDate);
+
+		ChromeOptions options = new ChromeOptions();
+		options.addArguments("--headless");
+
+		driver = new ChromeDriver(options);
+		driver.get("http://absgp.deliverit.com.br/login");
+		sendKeysByJsScript(EMAIL_SELECTOR, email);
+		sendKeysByJsScript(PWD_SELECTOR, absgpPwd);
 		driver.findElementByCssSelector(LOGIN_BTN_SELECTOR).click();
 		driver.findElementByXPath(TIMESHEET_URL_XPATH).click();
+		AtomicInteger total = new AtomicInteger(0);
 
 		try {
 	        WebDriverWait wait = new WebDriverWait(driver, 5);
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(ADICIONAR_SELECTOR)));
-			processInputFile(filePath);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+            data.forEach(jiraData -> {
+					insertLine(jiraData);
+					total.incrementAndGet();
+			});
         } catch(WebDriverException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
 		} finally {
-			if (reader != null) {
-				try {
-					reader.close();
-				} catch (IOException e) {
-					// Nothing to do
-				}
-			}
 			driver.quit();
 		}
-        System.out.printf("Importadas %d linhas.%n", nrLinhas);
+        System.out.printf("Importadas %d linhas.%n", total.intValue());
 	}
 
-	private void processInputFile(String filePath) throws IOException {
-		reader = new BufferedReader(new FileReader(filePath));
-		String line;
-		reader.readLine(); // Pula o cabeçalho
-		while ((line = reader.readLine()) != null) {
-			if (line.startsWith("DOON-") || line.startsWith("BB8-") || line.startsWith("DLC-")) {
-				try {
-					insertLine(line);
-					nrLinhas++;
-				} catch (ParseException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			} else {
-				System.err.println("Linha não reconhecida: " + line);
-			}
-		}
-	}
 
-	private void insertLine(String line) throws ParseException {
+	private void insertLine(JiraData data) {
 		String issueId = null;
-		String[] data = line.split(",");
-		if ("DOON-1089".equalsIgnoreCase(data[0])) {
+		if ("DOON-1089".equalsIgnoreCase(data.getIssueKey())) {
 			issueId = ISSUE_CERIMONIAS;
-		} else if (data[0].startsWith("DOON-")) {
+		} else if (data.getIssueKey().startsWith("DOON-")) {
 			issueId = ISSUE_DSV_DOON;
-		} else if (data[0].startsWith("BB8-")) {
+		} else if (data.getIssueKey().startsWith("BB8-")) {
 			issueId = ISSUE_DSV_BB8;
 		}
 		driver.findElementByCssSelector(ADICIONAR_SELECTOR).click();
 
-		sendKeysByJsScript(DATE_ENTRY_SELECTOR, data[1].substring(0, 10));
+		sendKeysByJsScript(DATE_ENTRY_SELECTOR, data.getDate());
         dispatchJsEvent(DATE_ENTRY_SELECTOR, "change");
 
 		driver.findElementByCssSelector(START_TIME_SELECTOR).click();
-		sendKeysByJsScript(START_TIME_SELECTOR, String.format("%04d", Integer.parseInt(data[1].substring(11).replace(":", ""))));
+		sendKeysByJsScript(START_TIME_SELECTOR, data.getStarTime());
         dispatchJsEvent(START_TIME_SELECTOR, "change");
 
         driver.findElementByCssSelector(END_TIME_SELECTOR).click();
-		//sendKeysByJsScript(END_TIME_SELECTOR, String.format("%04d", Integer.parseInt(calculaTermino(data[1], data[2]).replace(":", ""))));
-        sendKeysByJsScript(END_TIME_SELECTOR, calculaTermino(data[1], data[2]));
+        sendKeysByJsScript(END_TIME_SELECTOR, data.getFinalTime());
 		dispatchJsEvent(END_TIME_SELECTOR, "change");
 
 		if (!selectOption(PROJETO_SELECTOR, PROJETO_DOOTAX)) {
@@ -177,11 +150,12 @@ public class PullJira {
 			System.err.println("Erro ao selecionar a tarefa " + issueId);
 			return;
 		}
+		driver.findElementByCssSelector(PERCENTUAL_SELECTOR).click();
 		sendKeysByJsScript(PERCENTUAL_SELECTOR, PERCENTUAL_DEFAULT);
 		driver.findElementByCssSelector(SALVAR_SELECTOR).click();
 
 		if (hasErrors()) {
-		    System.err.printf("Erro ao inserir a linha %s%n", line);
+		    System.err.printf("Erro ao inserir a linha %s%n", data);
 		    System.err.println("\t\tPrecisará inserir manualmente.");
 		}
 	}
@@ -202,14 +176,6 @@ public class PullJira {
 			}
 		}
 		return found;
-	}
-	
-	private String calculaTermino(String inicio, String duracao) throws ParseException {
-		Date date = sdf.parse(inicio);
-		LocalDateTime someTime = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-		Long seconds = Long.parseLong(duracao);
-		someTime = someTime.plus(seconds, ChronoUnit.SECONDS);
-		return String.format("%02d", someTime.getHour()) + ":" + String.format("%02d", someTime.getMinute());
 	}
 
 	private void dispatchJsEvent(String selector, String event) {
