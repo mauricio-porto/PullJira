@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-public class JiraIntegration {
+public class JiraTempoIntegration {
 
     public static List<JiraData> consume(String username, String password, String initialDate, String finalDate) {
         Client client = Client.create();
