@@ -80,7 +80,7 @@ public class PullJira {
 		List<JiraData> data = JiraTimetrackerIntegration.consume(jiraUsername, jiraPwd, initialDate, finalDate);
 
 		ChromeOptions options = new ChromeOptions();
-//		options.addArguments("--headless");
+		options.addArguments("--headless");
 
 		driver = new ChromeDriver(options);
 		driver.get("http://absgp.deliverit.com.br/login");

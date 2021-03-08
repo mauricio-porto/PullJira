@@ -4,6 +4,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -28,9 +30,14 @@ public class JiraTimetrackerIntegration {
             driver.findElementById("login-form-submit").click();
             checkErrors(driver);
             driver.get("http://tools.dootax.com.br:8080/jira/secure/ReportingWebAction!default.jspa");
+            driver.findElementById("dateFrom").clear();
             driver.findElementById("dateFrom").sendKeys(initialDate);
+            driver.findElementById("dateTo").clear();
             driver.findElementById("dateTo").sendKeys(finalDate);
             driver.findElementById("create-report-button").click();
+
+            WebDriverWait wait = new WebDriverWait(driver, 5);
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("create-report-button")));
 
             WebElement table = driver.findElementById("worklogDetailsTable");
             table.findElements(By.xpath("./tbody/tr")).forEach(element -> {
