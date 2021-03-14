@@ -4,21 +4,12 @@
 package com.deliverit.absgp;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -44,7 +35,7 @@ public class PullJira {
 	private static final String PWD_SELECTOR = "#login > input:nth-child(3)";
 	private static final String LOGIN_BTN_SELECTOR = "#login > button";
 	private static final String TIMESHEET_URL_XPATH = "/html/body/div[1]/div/div[2]/ul[1]/li[3]/a";
-	private static final String ADICIONAR_SELECTOR = "#content > div > div:nth-child(5) > div > button";
+	private static final String ADICIONAR_SELECTOR = "//*[@id=\"content\"]/div/div[1]/div[2]/button";
 	private static final String DATE_ENTRY_SELECTOR = "#content > div > div.row.table-row > form > div:nth-child(1) > div > input";
 	private static final String START_TIME_SELECTOR = "#content > div > div.row.table-row > form > div:nth-child(2) > div > input";
 	private static final String END_TIME_SELECTOR = "#content > div > div.row.table-row > form > div:nth-child(3) > div > input";
@@ -64,7 +55,7 @@ public class PullJira {
 	// By.Text: DSV - DOON (aka value 7069), DSV - BB8 (aka value 7060) ou DSV - DLC
 	// (ainda sem entrada)
 	private static final String ISSUE_KEY_SELECTOR = "#content > div > div.row.table-row > form > div.col-md-6 > div > div > select:nth-child(3)";
-	private static final String ISSUE_CERIMONIAS = "Reunião - [Sprints] DOON-1089 Cerimônias"; // Reunião - [Sprints] DOON-1089 Cerimônias
+	private static final String ISSUE_CERIMONIAS = "REU - DOON"; // Reunião - [Sprints] DOON-1089 Cerimônias
 	private static final String ISSUE_DSV_DOON = "DSV - DOON";
 	private static final String ISSUE_DSV_BB8 = "DSV - BB8";
 
@@ -82,11 +73,11 @@ public class PullJira {
 			System.out.println("Os parametros são <absgpEmail> <absgpPwd> <jiraUsername> <jiraPwd> <initialDate> <finalDate>");
 			System.exit(0);
 		}
-		me.execute(args[0], args[1], args[2], args[3], args[4], args[5]);
+		me.execute(args[0],args[1],args[2],args[3],args[4],args[5]);
 	}
 
 	private void execute(String email, String absgpPwd, String jiraUsername, String jiraPwd, String initialDate, String finalDate) {
-		List<JiraData> data = JiraIntegration.consume(jiraUsername, jiraPwd, initialDate, finalDate);
+		List<JiraData> data = JiraTimetrackerIntegration.consume(jiraUsername, jiraPwd, initialDate, finalDate);
 
 		ChromeOptions options = new ChromeOptions();
 		options.addArguments("--headless");
@@ -101,7 +92,7 @@ public class PullJira {
 
 		try {
 	        WebDriverWait wait = new WebDriverWait(driver, 5);
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(ADICIONAR_SELECTOR)));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("//*[@id=\"content\"]/div/div[1]/div[2]/button")));
             data.forEach(jiraData -> {
 					insertLine(jiraData);
 					total.incrementAndGet();
@@ -125,7 +116,9 @@ public class PullJira {
 		} else if (data.getIssueKey().startsWith("BB8-")) {
 			issueId = ISSUE_DSV_BB8;
 		}
-		driver.findElementByCssSelector(ADICIONAR_SELECTOR).click();
+
+		driver.executeScript("window.scrollTo(0, 0);");
+		driver.findElementByXPath("//*[@id=\"content\"]/div/div[1]/div[2]/button").click();
 
 		sendKeysByJsScript(DATE_ENTRY_SELECTOR, data.getDate());
         dispatchJsEvent(DATE_ENTRY_SELECTOR, "change");
@@ -151,7 +144,7 @@ public class PullJira {
 			return;
 		}
 		driver.findElementByCssSelector(PERCENTUAL_SELECTOR).click();
-		sendKeysByJsScript(PERCENTUAL_SELECTOR, PERCENTUAL_DEFAULT);
+		driver.findElementByCssSelector(PERCENTUAL_SELECTOR).sendKeys(PERCENTUAL_DEFAULT);
 		driver.findElementByCssSelector(SALVAR_SELECTOR).click();
 
 		if (hasErrors()) {
